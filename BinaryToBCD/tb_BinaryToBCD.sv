@@ -1,0 +1,126 @@
+/* ========== Binary to BCD Converter Testbench ==========
+    Target Module: BinToBCD
+    Description: Self-checking testbench for pipeline Binary to BCD converter.
+   ======================================================== */
+
+`timescale 1ns/1ps
+
+module BinToBCD_tb;
+
+    // Parameters
+    localparam INPUT_WIDTH  = 20;
+    localparam OUTPUT_WIDTH = ((INPUT_WIDTH * 302) / 1000 + 1) * 4; // 24 bits (6 BCD digits)
+    localparam CLK_PERIOD   = 10; // 100 MHz clock
+
+    // Testbench Signals
+    logic clk;
+    logic rst;
+    logic start;
+    logic [INPUT_WIDTH-1:0] binary_input;
+    logic [OUTPUT_WIDTH-1:0] bcd_output;
+    logic done;
+
+    // Queue to track expected values through the pipeline latency
+    logic [INPUT_WIDTH-1:0] expected_queue [$];
+
+    // Instantiate Unit Under Test (UUT)
+    BinToBCD #(
+        .InputWidth(INPUT_WIDTH)
+    ) uut (
+        .clk(clk),
+        .rst(rst),
+        .start(start),
+        .binary_input(binary_input),
+        .bcd_output(bcd_output),
+        .done(done)
+    );
+
+    // Clock Generation
+    initial begin
+        clk = 0;
+        forever #(CLK_PERIOD / 2) clk = ~clk;
+    end
+
+    // Function to calculate reference BCD value from a binary integer
+    function automatic logic [OUTPUT_WIDTH-1:0] get_expected_bcd(input logic [INPUT_WIDTH-1:0] bin);
+        logic [OUTPUT_WIDTH-1:0] bcd = '0;
+        int temp = bin;
+        for (int i = 0; i < (OUTPUT_WIDTH / 4); i++) begin
+            bcd[i*4 +: 4] = temp % 10;
+            temp = temp / 10;
+        end
+        return bcd;
+    endfunction
+
+    // Drive stimulus Task
+    task automatic send_vector(input logic [INPUT_WIDTH-1:0] value);
+        @(posedge clk);
+        start        <= 1'b1;
+        binary_input <= value;
+        expected_queue.push_back(value);
+        @(posedge clk);
+        start        <= 1'b0;
+        binary_input <= '0;
+    endtask
+
+    // Main Test Stimulus
+    initial begin
+        // Initialize Inputs
+        rst          = 1'b0; // Assert Active-Low Reset
+        start        = 1'b0;
+        binary_input = '0;
+
+        // Reset Pulse
+        #(CLK_PERIOD * 2);
+        rst = 1'b1;
+        #(CLK_PERIOD * 2);
+
+        $display("\n--- Starting BinToBCD Pipeline Verification ---");
+
+        // Test Case 1: Corner Cases
+        send_vector(20'd0);
+        send_vector(20'd1);
+        send_vector((1 << INPUT_WIDTH) - 1); // Max value (1,048,575)
+
+        // Test Case 2: Standard Decimals
+        send_vector(20'd123456);
+        send_vector(20'd999999);
+        send_vector(20'd42);
+
+        // Test Case 3: Back-to-Back Pipelined Data Streams
+        repeat (10) begin
+            send_vector($urandom % (1 << INPUT_WIDTH));
+        end
+
+        // Wait for all queued items to process through the pipeline
+        wait(expected_queue.size() == 0);
+        #(CLK_PERIOD * 5);
+
+        $display("\n>>> ALL TESTS PASSED SUCCESSFULLY <<<\n");
+        $finish;
+    end
+
+    // Output Checker Process (Triggers on 'done')
+    always @(posedge clk) begin
+        if (done) begin
+            if (expected_queue.size() == 0) begin
+                $error("[ERROR] Unexpected 'done' signal received with empty expectation queue!");
+            end else begin
+                logic [INPUT_WIDTH-1:0] expected_bin;
+                logic [OUTPUT_WIDTH-1:0] expected_bcd;
+
+                expected_bin = expected_queue.pop_front();
+                expected_bcd = get_expected_bcd(expected_bin);
+
+                if (bcd_output !== expected_bcd) begin
+                    $error("[FAIL] Binary Input: %0d | Expected BCD: %h | Got: %h", 
+                           expected_bin, expected_bcd, bcd_output);
+                end else begin
+                    $display("[PASS] Binary Input: %0d (0x%0h) -> BCD Output: %h", 
+                             expected_bin, expected_bin, bcd_output);
+                end
+            end
+        end
+    end
+
+endmodule
