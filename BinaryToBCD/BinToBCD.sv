@@ -1,7 +1,9 @@
 /* ========== Binary to Binary Coded Decimal (BCD) Converter Module ==========
     Author: Jack Barnard
     Date: 2026-07-11
-    Description: This module implements a binary to BCD conversion algorithm using a pipeline architecture. It takes an InputWidth-bit binary number and converts it to a BCD representation with OutputWidth bits. The conversion process is initiated by the 'start' signal and the result is available on 'bcd_output' when 'done' is asserted.
+    Description: This module implements a binary to BCD conversion algorithm using a pipeline architecture. 
+                 It takes an InputWidth-bit binary number and converts it to a BCD representation with OutputWidth bits. 
+                 The conversion process is initiated by the 'start' signal and the result is available on 'bcd_output' when 'done' is asserted.
     Change Log:
     - Initial version (2026-07-11)
     - Updated header comments (2026-09-08)
